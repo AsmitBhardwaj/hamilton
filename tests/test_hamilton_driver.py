@@ -562,3 +562,31 @@ def test_driver_setstate_getstate():
         inputs={"drivers": drivers, "inputs": inputs, "final_vars": ["double"]},
     )
     assert r == {"reducer": [{"double": 0}, {"double": 2}, {"double": 4}, {"double": 6}]}
+
+
+def test_driver_thread_safety():
+    """Test that a single Driver instance can be used concurrently from multiple threads
+    without threads interfering with each other's results."""
+    import threading
+    import tests.resources.very_simple_dag as very_simple_dag
+
+    dr = Driver({}, very_simple_dag)
+    results = {}
+    errors = []
+
+    def run_execute(input_val):
+        try:
+            result = dr.execute(["b"], inputs={"a": input_val})
+            results[input_val] = result["b"]
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=run_execute, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Threads raised errors: {errors}"
+    for i in range(10):
+        assert results[i].item() == i, f"Thread with input {i} got wrong result: {results[i]}"
